@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pre-Results Radar</title>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --ink:#15181d; --muted:#5d6672; --line:#e3e6ea;
+  --accent:#2457d6; --pos:#0f7b46; --pos-bg:#e5f5ec; --neg:#b42318; --neg-bg:#fdecea;
+  --warn:#9a6700; --warn-bg:#fff4d6; --chip:#eef1f5;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1216; --panel:#171b21; --ink:#e7eaee; --muted:#9aa3ad; --line:#272d35;
+    --accent:#7aa2ff; --pos:#4cc38a; --pos-bg:#14271d; --neg:#ff7b72; --neg-bg:#2c1615;
+    --warn:#e3b341; --warn-bg:#2b2410; --chip:#222831;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1216; --panel:#171b21; --ink:#e7eaee; --muted:#9aa3ad; --line:#272d35;
+  --accent:#7aa2ff; --pos:#4cc38a; --pos-bg:#236b44; --neg:#ff7b72; --neg-bg:#2c1615;
+  --warn:#e3b341; --warn-bg:#2b2410; --chip:#222831;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1180px;margin:0 auto;padding:20px 16px 60px}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:18px}
+h1{font-size:22px;margin:0}
+h2{font-size:17px;margin:28px 0 10px;display:flex;gap:8px;align-items:baseline}
+h2 small{font-weight:400;color:var(--muted);font-size:13px}
+h3{font-size:14px;margin:0 0 6px}
+.meta{color:var(--muted);font-size:13px}
+button{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:9px 16px;font-weight:600;cursor:pointer;font-size:14px}
+button:disabled{opacity:.55;cursor:progress}
+.status{font-size:13px;color:var(--muted);margin-top:4px;min-height:18px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.card ul{margin:6px 0 0;padding-left:18px}
+.card li{margin:2px 0}
+.chip{display:inline-block;background:var(--chip);border-radius:20px;padding:1px 9px;font-size:12px;color:var(--muted);margin-right:4px}
+.empty{color:var(--muted);font-style:italic;padding:8px 2px}
+.tbl{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;white-space:nowrap}
+td.wrap{white-space:normal;min-width:240px}
+th{color:var(--muted);font-weight:600;font-size:12px;background:var(--panel);position:sticky;top:0}
+tr:last-child td{border-bottom:0}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.sig{font-weight:700;border-radius:6px;padding:2px 8px;font-size:12px;display:inline-block}
+.sig.buy{background:var(--pos-bg);color:var(--pos)} .sig.sell{background:var(--neg-bg);color:var(--neg)}
+.sig.risky{background:var(--warn-bg);color:var(--warn)} .sig.none{background:var(--chip);color:var(--muted)}
+.up{color:var(--pos)} .down{color:var(--neg)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px}
+.tabs button{background:var(--chip);color:var(--ink);font-weight:500;padding:6px 12px}
+.tabs button.on{background:var(--accent);color:#fff}
+details{margin-top:8px} summary{cursor:pointer;color:var(--accent)}
+.note{font-size:12px;color:var(--muted)}
+.story{margin:6px 0 8px}
+a{color:var(--accent)}
+.err{color:var(--neg)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Pre-Results Radar</h1>
+      <div class="meta" id="meta">Loading…</div>
+    </div>
+    <div style="text-align:right">
+      <button id="refresh">Refresh</button>
+      <div class="status" id="status"></div>
+    </div>
+  </header>
+
+  <h2>Signals <small>entry = CMP (live price in market hours, otherwise last NSE close) · targets from 14-day average true range</small></h2>
+  <div class="tbl"><table id="signals"></table></div>
+
+  <h2>Movers board <small>stocks with fresh results: the most likely top gainers and losers</small></h2>
+  <div class="tbl"><table id="movers"></table></div>
+  <p class="note" id="moversNote"></p>
+
+  <h2>Live sector themes <small id="themeSub">3 or more F&amp;O names from one industry in NSE's live top-20 movers</small></h2>
+  <div class="grid" id="themes"></div>
+
+  <h2 id="likelyHead">Likely big movers next session <small>chance of finishing among the top-10 F&amp;O gainers or losers (base rate about 9%)</small></h2>
+  <div class="tbl"><table id="likely"></table></div>
+  <p class="note">From the day-before study: features known at the close that made a top-10 finish 2x or more likely. Direction is mostly not predictable from these (big moves and open-interest jumps tend to fade), so most rows say EITHER; confirm with the move after 9:15.</p>
+
+  <h2>Signal tracker <small id="trackSum">every signal, followed to its target, stop or holding period</small></h2>
+  <div class="tbl"><table id="tracker"></table></div>
+
+  <h2>Results radar <small>F&amp;O stocks reporting in the next 7 days · dates from NSE filings</small></h2>
+  <div class="tabs" id="radarTabs"></div>
+  <div id="radar"></div>
+
+  <h2>Recently reported <small>what the strategy said before the results, and what happened</small></h2>
+  <div class="tbl"><table id="recent"></table></div>
+
+  <h2>What the evidence says <small id="pbsub"></small></h2>
+  <div class="tbl"><table id="playbook"></table></div>
+  <p class="note">Top-10 = share of these events where the stock finished among that day's 10 biggest F&amp;O gainers / losers.
+  "Open to 5th close" assumes buying at the first open after the event, so the overnight gap is not counted as profit.</p>
+
+  <h2>Pre-results score backtest <small id="btwin"></small></h2>
+  <div class="tbl"><table id="bt"></table></div>
+  <details><summary>All results in the backtest</summary><div class="tbl" style="margin-top:8px"><table id="btall"></table></div></details>
+  <p class="note" id="btmethod"></p>
+
+  <h2>Case studies <small>why these stocks moved, from exchange filings and prices</small></h2>
+  <div class="grid" id="cases"></div>
+
+  <h2>Excluded &amp; pruned</h2>
+  <div class="panel" id="excl"></div>
+
+  <h2>Method</h2>
+  <div class="panel note" id="method">
+    Universe: NSE F&amp;O stocks only. Results dates: NSE board-meeting intimations and the NSE event calendar (exchange filings);
+    names that already filed are pruned. Numbers: NSE integrated XBRL filings (consolidated when available).
+    Score /100: growth 25, analysts 15, positives 15, sector 10, history 15, momentum 10, room 10. Broker estimates are not
+    available from free sources, so the score is computed out of 85 and rescaled. A ≥ 75 (growth and history ≥ 7);
+    B 65–74; D = weak last quarter with hard recovery evidence (revenue up QoQ plus momentum or fresh orders).
+    A/B exclude loss-makers, governance flags and market cap below Rs.5,000 cr. Pledge data: NSE pledge feed returned no
+    data in testing, so pledge &gt; 25% is not checked. Event signals come from non-routine NSE announcements the market can still react to (the last two
+    sessions), with the attached PDF read for the actual content. Each signal is held for the period where the studies found an
+    edge (news 2 sessions, follow-through 4, results and pre-results 5) and closes early at its target or stop.
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const inr = (x, d=2) => x == null ? "n/a" : Number(x).toLocaleString("en-IN", {minimumFractionDigits:d, maximumFractionDigits:d});
+const pct = (x, d=1) => x == null ? "n/a" : `<span class="${x>=0?"up":"down"}">${x>=0?"+":""}${(x*100).toFixed(d)}%</span>`;
+const sigCls = s => !s ? "none" : s.includes("RISKY") || s.includes("WATCH") ? "risky" : s.includes("SELL") ? "sell" : "buy";
+const sig = s => `<span class="sig ${sigCls(s)}">${esc(s || "No signal")}</span>`;
+const fmtDate = iso => iso ? new Date(iso + "T00:00:00").toLocaleDateString("en-IN", {weekday:"short", day:"2-digit", month:"short"}) : "";
+
+let data = null, radarTab = "C";
+
+async function load() {
+  try {
+    const r = await fetch("/data/radar.json?t=" + Date.now());
+    if (!r.ok) throw new Error("no data yet");
+    data = await r.json();
+    render();
+  } catch (e) {
+    $("#meta").textContent = "No data yet. Press Refresh to build the first radar.";
+  }
+}
+
+function render() {
+  const d = data;
+  $("#meta").innerHTML = `Built ${esc(d.generated_at)} · prices as of NSE close ${esc(d.as_of_close)} · ${d.loaded}/${d.universe} F&amp;O stocks`
+    + (d.llm ? (d.llm_usage ? ` · LLM: ${d.llm_usage.calls} calls, ${(d.llm_usage.prompt_tokens + d.llm_usage.completion_tokens).toLocaleString("en-IN")} tokens, ${d.llm_usage.cached} from cache` : "") : " · LLM off (rule-based summaries)");
+
+  const S = d.signals || [];
+  $("#signals").innerHTML = S.length ? `<tr><th>Signal</th><th>Stock</th><th class="num">CMP</th><th class="num">Entry</th><th class="num">Target</th><th class="num">Stop-loss</th><th>Trigger</th><th>Why</th></tr>` +
+    S.map(s => `<tr><td>${sig(s.signal)}</td><td><b>${esc(s.name)}</b><div class="note">${esc(s.sym)}</div></td>
+      <td class="num">${inr(s.cmp)}</td><td class="num">${inr(s.entry)}</td><td class="num">${inr(s.target)}</td><td class="num">${inr(s.stop)}</td>
+      <td class="wrap">${esc(s.trigger)}${s.reaction ? `<div class="note">${esc(s.reaction)}</div>` : ""}</td>
+      <td class="wrap">${esc(s.why)}${s.source ? ` <a href="${esc(s.source)}" target="_blank" rel="noopener">filing</a>` : ""}</td></tr>`).join("")
+    : `<tr><td class="empty">No signals today.</td></tr>`;
+
+  const M = d.movers || [];
+  $("#movers").innerHTML = M.length ? `<tr><th>Stock</th><th>Results filed</th><th>Lean</th><th>Status</th><th class="num">Today / day 1</th><th>Numbers</th></tr>` +
+    M.map(m => `<tr><td><b>${esc(m.name)}</b><div class="note">${esc(m.sym)}</div></td><td>${esc(m.filed)}</td>
+      <td><span class="sig ${m.lean==="UP"?"buy":m.lean==="DOWN"?"sell":"none"}">${esc(m.lean)}</span></td>
+      <td class="wrap">${esc(m.status)}</td><td class="num">${pct(m.stage==="fresh" ? m.live_chg : m.r1)}</td>
+      <td class="wrap">${esc(m.facts)}</td></tr>`).join("")
+    : `<tr><td class="empty">No F&amp;O results in the last 8 days.</td></tr>`;
+  $("#moversNote").textContent = "Lean is right about 55-60% of the time before the open. Press Refresh after 9:20 AM: a move of 3% or more confirms the direction and upgrades WATCH to BUY or SELL.";
+
+  const TH = d.themes || [];
+  $("#themes").innerHTML = TH.length ? TH.map(t => `<div class="card"><h3>${t.side==="up"?"⬆":"⬇"} ${esc(t.industry)}</h3>
+      <span class="chip">${esc(t.time)}</span>
+      <ul>${t.movers.map(m => `<li>${esc(m.name)} ${pct(m.chg)}</li>`).join("")}</ul>
+      ${t.others.length ? `<div class="note">Other F&amp;O names in this industry: ${esc(t.others.join(", "))}</div>` : ""}</div>`).join("")
+    : `<div class="empty">No sector cluster right now (shows only during market hours, on Refresh or the 09:20 run).</div>`;
+
+  const LK = d.likely || [];
+  if (LK.length && LK[0].for_session) {
+    $("#likelyHead").innerHTML = `Likely big movers on ${esc(fmtDate(LK[0].for_session))} <small>prediction made from the ${esc(fmtDate(LK[0].as_of))} close · chance of finishing among that session's top-10 F&amp;O gainers or losers (normal: about 9%)</small>`;
+  }
+  $("#likely").innerHTML = LK.length ? `<tr><th>Stock</th><th class="num">Chance top-10</th><th class="num">vs normal</th><th>Lean</th><th>Why</th></tr>` +
+    LK.map(x => `<tr><td><b>${esc(x.name)}</b><div class="note">${esc(x.sym)}</div></td><td class="num">${(x.p*100).toFixed(0)}%</td>
+      <td class="num">${x.lift.toFixed(1)}×</td><td><span class="sig ${x.lean==="UP"?"buy":x.lean==="DOWN"?"sell":"none"}">${esc(x.lean)}</span></td>
+      <td class="wrap">${esc(x.why)}</td></tr>`).join("")
+    : `<tr><td class="empty">No stock matches a high-probability pattern today.</td></tr>`;
+
+  const T = d.tracker || [];
+  const ts = d.track_summary;
+  $("#trackSum").textContent = ts ? `${ts.n} closed · ${(ts.working*100).toFixed(0)}% made money · average ${(ts.avg*100).toFixed(1)}% · ${ts.open} open` : "every signal, followed to its target, stop or holding period";
+  const stCls = s => !s ? "" : s.includes("target") || s.includes("working") ? "up" : s.includes("stopped") || s.includes("against") ? "down" : "";
+  $("#tracker").innerHTML = T.length ? `<tr><th>First seen</th><th>Signal</th><th>Stock</th><th>Type</th><th class="num">Entry</th><th class="num">Exit / now</th><th class="num">For the signal</th><th>Status</th><th class="num">Sessions</th></tr>` +
+    T.map(t => `<tr><td>${esc(t.first_seen)}</td><td>${sig(t.signal)}</td><td>${esc(t.name)}</td><td>${esc(t.kind)}</td>
+      <td class="num">${inr(t.entry)}</td><td class="num">${inr(t.last)}</td><td class="num">${pct(t.with_signal)}</td>
+      <td class="${stCls(t.status)}">${esc(t.status||"")}${t.closed ? ` <span class="note">(${esc(t.closed)})</span>` : ""}</td>
+      <td class="num">${t.sessions ?? ""}/${t.horizon ?? ""}</td></tr>`).join("")
+    : `<tr><td class="empty">No signals logged yet.</td></tr>`;
+
+  const pb = d.playbook;
+  if (pb) {
+    $("#pbsub").textContent = `${pb.n_results} results days and ${pb.n_news} news filings, F&O stocks, since ${pb.from}`;
+    const p0 = x => x == null ? "n/a" : (x*100).toFixed(0) + "%";
+    const prow = (k, v) => `<tr><td>${esc(k)}</td><td class="num">${v.n}</td><td class="num">${pct(v.gap)}</td><td class="num">${pct(v.r1)}</td><td class="num">${pct(v.o5)}</td><td class="num">${p0(v.top10)}</td><td class="num">${p0(v.bot10)}</td></tr>`;
+    $("#playbook").innerHTML = `<tr><th>Event</th><th class="num">Count</th><th class="num">Opening gap</th><th class="num">Day 1</th><th class="num">Open to 5th close</th><th class="num">Top-10 gainer</th><th class="num">Top-10 loser</th></tr>` +
+      `<tr><td><i>Any stock, any day (base rate)</i></td><td class="num"></td><td></td><td></td><td></td><td class="num">${p0(pb.base_top10)}</td><td class="num">${p0(pb.base_top10)}</td></tr>` +
+      Object.entries(pb.results).filter(([k]) => k !== "n/a").map(([k, v]) => prow("Results: " + k, v)).join("") +
+      prow("All results days", pb.all_results) +
+      Object.entries(pb.news_rule).map(([k, v]) => prow("News: " + ({"neg:2":"negative","neg:3":"strongly negative","pos:1":"mildly positive","pos:2":"positive","pos:3":"strongly positive","neutral":"other non-routine"}[k] || k), v)).join("");
+  }
+
+  const tabs = [["C","C · Tomorrow"],["A","A · Very positive"],["B1","B · List 1 (Rs.20,000 cr+)"],["B2","B · List 2 (Rs.5,000–20,000 cr)"],["D","D · Turnaround (risky)"]];
+  $("#radarTabs").innerHTML = tabs.map(([k,l]) => `<button class="${k===radarTab?"on":""}" data-k="${k}">${l} (${(d[k]||[]).length})</button>`).join("");
+  $("#radarTabs").querySelectorAll("button").forEach(b => b.onclick = () => { radarTab = b.dataset.k; render(); });
+  const items = d[radarTab] || [];
+  const tagName = {A:"A", B:"B", D:"D"};
+  $("#radar").innerHTML = items.length ? `<div class="grid">${items.map(i => `<div class="card">
+      <h3>${esc(i.name)}</h3><span class="chip">${fmtDate(i.date)}</span>${i.tag ? `<span class="chip">${tagName[i.tag]||i.tag}</span>` : ""}
+      <ul>${i.bullets.map(b => `<li>${esc(b)}</li>`).join("")}</ul>
+      <div class="note" style="margin-top:6px">Date verified: ${esc(i.verified)}</div></div>`).join("")}</div>`
+    : `<div class="empty">None. ${radarTab==="C" ? `No F&amp;O stock reports on ${esc(fmtDate(d.tomorrow))}.` : "No F&O name qualifies this week (not padded)."}</div>`;
+
+  const rec = (d.backtest && d.backtest.recent) || [];
+  $("#recent").innerHTML = rec.length ? `<tr><th>Stock</th><th>Filed</th><th>Qtr</th><th class="num">Profit YoY</th><th class="num">Revenue YoY</th><th class="num">Month before</th><th>Pre-results signal</th><th class="num">Next day</th><th class="num">5 days</th><th class="num">To date</th><th class="num">Volume</th><th>Result</th></tr>` +
+    rec.map(r => {
+      const hit = !r.signal || r.r1 == null ? "" : (r.signal.includes("SELL") ? r.r1 < 0 : r.r1 > 0) ? `<span class="up">hit</span>` : `<span class="down">miss</span>`;
+      return `<tr><td><b>${esc(r.name)}</b></td><td>${esc(r.filed)}</td><td>${esc(r.quarter)}</td>
+        <td class="num">${pct(r.act_pat_yoy,0)}</td><td class="num">${pct(r.act_rev_yoy,0)}</td><td class="num">${pct(r.pre_r21)}</td>
+        <td>${sig(r.signal)}</td><td class="num">${pct(r.r1)}</td><td class="num">${pct(r.r5)}</td><td class="num">${pct(r.r_to_date)}</td>
+        <td class="num">${r.vol_x ? r.vol_x.toFixed(1)+"×" : "n/a"}</td><td>${hit}</td></tr>`}).join("")
+    : `<tr><td class="empty">No F&amp;O results in the last 10 days.</td></tr>`;
+
+  const bt = d.backtest || {};
+  $("#btwin").textContent = bt.window || "";
+  $("#btmethod").textContent = bt.method || "";
+  const row = (name, s) => `<tr><td>${name}</td><td class="num">${s.n}</td>
+      <td class="num">${s.win_r1==null?"n/a":(s.win_r1*100).toFixed(0)+"%"}</td><td class="num">${pct(s.avg_r1)}</td>
+      <td class="num">${s.win_r5==null?"n/a":(s.win_r5*100).toFixed(0)+"%"} <span class="note">(${s.n_r5})</span></td><td class="num">${pct(s.avg_r5)}</td></tr>`;
+  $("#bt").innerHTML = `<tr><th>Signal before results</th><th class="num">Stocks</th><th class="num">Win % next day</th><th class="num">Avg next day</th><th class="num">Win % 5 days</th><th class="num">Avg 5 days</th></tr>` +
+    (bt.summary||[]).map(s => row(sig(s.signal==="No signal"?null:s.signal), s)).join("") +
+    (bt.all_reporters ? row("<i>All F&amp;O reporters (baseline)</i>", bt.all_reporters) : "");
+  $("#btall").innerHTML = `<tr><th>Stock</th><th>Filed</th><th>Signal</th><th class="num">Profit YoY</th><th class="num">Next day</th><th class="num">5 days</th></tr>` +
+    (bt.rows||[]).map(r => `<tr><td>${esc(r.name)}</td><td>${esc(r.filed)}</td><td>${sig(r.signal)}</td><td class="num">${pct(r.act_pat_yoy,0)}</td><td class="num">${pct(r.r1)}</td><td class="num">${pct(r.r5)}</td></tr>`).join("");
+
+  $("#cases").innerHTML = (d.cases||[]).map(c => `<div class="card">
+      <h3>${esc(c.name)}</h3>
+      <span class="chip">12m ${pct(c.year_ret,0)}</span><span class="chip">deepest fall ${pct(c.max_dd,0)}</span><span class="chip">recovered ${pct(c.recovery,0)}</span>
+      <p class="story">${esc(c.story)}</p>
+      <table><tr><th>Results</th><th class="num">Profit YoY</th><th class="num">Month before</th><th class="num">Next day</th><th class="num">5 days</th></tr>
+      ${c.results.map(r => `<tr><td>${esc(r.quarter)}</td><td class="num">${pct(r.pat_yoy,0)}</td><td class="num">${pct(r.pre_r21,0)}</td><td class="num">${pct(r.r1)}</td><td class="num">${pct(r.r5)}</td></tr>`).join("")}</table>
+      <details><summary>Big moves and their triggers</summary>
+      <ul>${c.big_moves.map(m => `<li><b>${esc(fmtDate(m.date))}</b> ${pct(m.ret)} on ${m.vol_x.toFixed(1)}× volume: ${esc(m.trigger.join(" | "))}</li>`).join("")}</ul></details>
+    </div>`).join("");
+
+  const ex = (d.excluded||[]).map(e => `<li>${esc(e.name)} (${esc(fmtDate(e.date))}): ${esc(e.reason)}</li>`).join("");
+  const pr = (d.pruned||[]).map(e => `<li>${esc(e.name)} (${esc(fmtDate(e.date))}): ${esc(e.reason)}</li>`).join("");
+  $("#excl").innerHTML = (ex ? `<b>Excluded</b><ul>${ex}</ul>` : `<div class="empty">No exclusions this run.</div>`) +
+    (pr ? `<b>Pruned</b><ul>${pr}</ul>` : "") +
+    ((d.filtered_events||[]).length ? `<details><summary>Filings ignored as not price-moving (${d.filtered_events.length})</summary><ul>${d.filtered_events.map(n => `<li>${esc(n)}</li>`).join("")}</ul></details>` : "") +
+    ((d.notes||[]).length ? `<details><summary>Data notes (${d.notes.length})</summary><ul>${d.notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul></details>` : "");
+}
+
+async function poll() {
+  try {
+    const s = await (await fetch("/api/status")).json();
+    $("#refresh").disabled = s.running;
+    $("#status").innerHTML = s.running ? `Refreshing: ${esc(s.message)}`
+      : s.error ? `<span class="err">${esc(s.error)}</span>`
+      : `${s.telegram ? `Telegram: ${esc(s.telegram)} · ` : ""}Auto refresh + Telegram ${esc(s.next_auto || "08:30 IST")}`;
+    if (!s.running && poll.wasRunning) load();
+    poll.wasRunning = s.running;
+    if (s.running) setTimeout(poll, 2000);
+  } catch (e) { $("#status").textContent = "server not reachable"; }
+}
+
+$("#refresh").onclick = async () => {
+  $("#refresh").disabled = true;
+  await fetch("/api/refresh", {method: "POST"});
+  poll.wasRunning = true;
+  poll();
+};
+
+load(); poll();
+</script>
+</body>
+</html>
